@@ -1,0 +1,34 @@
+{
+  "name": "@local/fig",
+  "version": "0.0.0",
+  "private": true,
+  "bin": {
+    "fig": "./dist/cli.mjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/api.d.mts",
+      "import": "./dist/api.mjs"
+    }
+  },
+  "dependencies": {
+    "diff": "9.0.0",
+    "jiti": "2.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "typescript": "7.0.2",
+    "vite-plus": "1.6.0"
+  },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "26"
+    }
+  },
+  "packageManager": "pnpm@12.21.0"
+}
