@@ -66,6 +66,12 @@
 
   Use jsdiff's `diff` package against exact contents, without requiring Git or system `diff`. When replacing a destination symlink with a regular file, compare its planning-time dereferenced contents against the new contents. Report unavailable contents rather than an empty-file diff for dangling, unreadable, or non-file referents. Other symlink diffs compare link target strings. Dereferencing is display-only: ownership and preflight snapshots still capture the link target, and writes never follow destination symlinks.
 
+- **Render plans as filename-first blocks with compact metadata.**
+
+  Separate file blocks with blank lines. Show a bold path, then any metadata changes on their own indented line, then indented unified diff hunks. Omit unified diff file headers; retain `@@` hunk headers. Represent metadata as space-separated before/after tokens, such as `-symlink +file:600` or `-file:644 +file:600`. Include modes on regular files, not symlinks; do not count a type replacement as a permission change. Creation shows only the added token; deletion only the removed token. Preserved files get a notice instead of a diff.
+
+  Use red for removals, green for additions, blue for hunk headers, and dim text for context, notices, and totals. Enable color only on supported terminals and respect `NO_COLOR`; plain output retains the same text and spacing. Summarize changed files and content line counts, explicitly noting unchanged or unavailable contents when appropriate. Omit zero-valued permission, preserved, and unchanged counters. Apply output remains compact as described below.
+
 - **Planning does not write managed files.**
 
   Do not write destinations or the ledger. Report creation/deletion, type changes, permissions, binary changes, and preserved obsolete files alongside content diffs.
