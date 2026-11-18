@@ -19,10 +19,9 @@ test("files dereferences source links and replaces destination links without tou
   await symlink(original, join(f.home, "linked"));
   const config = [f.api().files("../source-link")];
   const result = await f.plan(config);
-  assert.match(render(result, "plan"), /type: symlink → file/);
-  assert.match(render(result, "plan"), /mode: 777 → 640/);
-  assert.match(render(result, "plan"), /-untouched\n\+new/);
-  assert.match(render(result, "plan"), /before; dereferenced symlink/);
+  assert.match(render(result, "plan"), /-symlink \+file:640/);
+  assert.doesNotMatch(render(result, "plan"), /777/);
+  assert.match(render(result, "plan"), /-untouched\n  \+new/);
   const change = result.changes.find((change) => change.path === join(f.home, "linked"))!;
   assert.equal(change.before?.toString(), original);
   assert.equal(change.diffBefore?.toString(), "untouched\n");
@@ -44,13 +43,13 @@ test.each(["same\n", "old\n", "old\0bytes"])(
     const result = await f.plan([f.api().files("../input")]);
     const output = render(result, "plan");
     if (contents === "same\n") {
-      assert.match(output, /1 files changed, \+0 -0/);
+      assert.match(output, /1 files changed · contents unchanged/);
       assert.doesNotMatch(output, /@@/);
     } else if (contents.includes("\0")) {
       assert.match(output, /binary \(9 → 5 bytes\)/);
     } else {
-      assert.match(output, /-old\n\+same/);
-      assert.match(output, /1 files changed, \+1 -1/);
+      assert.match(output, /-old\n  \+same/);
+      assert.match(output, /1 files changed · 1 with content changes \(\+1 -1\)/);
     }
     // Rendering is based on planning-time bytes, not subsequent filesystem reads.
     await f.file(join(f.home, "target"), "later\n");
@@ -90,7 +89,7 @@ test("metadata composes in pipeline order, supports mode-only edits and symlink 
       return contents;
     }),
   ]);
-  assert.match(render(modeOnly, "plan"), /MODE.*mode: 640 → 600/);
+  assert.match(render(modeOnly, "plan"), /-file:640 \+file:600/);
   await apply(modeOnly);
   assert.equal((await lstat(path)).mode & 0o777, 0o600);
   const config = [

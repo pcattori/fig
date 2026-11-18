@@ -28,7 +28,13 @@ async function main() {
     plugins: await loadPlugins(values.config ?? join(homedir(), ".config/fig/config.ts")),
   });
   if (command === "apply") await apply(result);
-  process.stdout.write(render(result, command as "plan" | "apply"));
+  process.stdout.write(
+    render(result, command as "plan" | "apply", {
+      color: Boolean(
+        process.stdout.isTTY && process.stdout.hasColors() && !("NO_COLOR" in process.env),
+      ),
+    }),
+  );
 }
 
 main().catch((error: Error) => {

@@ -34,13 +34,16 @@ describe("Planning and applying", () => {
     "%s has fixed output: line counts/totals, full diffs only for plan, and no routine provenance",
     (command) => {
       const output = render(plan([change()]), command);
-      assert.match(output, /UPDATED\s+~\/settings\s+\+1 -1/);
-      assert.match(output, /1 files changed, \+1 -1/);
+      assert.match(
+        output,
+        command === "plan" ? /^~\/settings\n  @@/ : /UPDATED\s+~\/settings\s+\+1 -1/,
+      );
+      assert.match(output, /1 files changed/);
+      assert.match(output, /\+1 -1/);
       assert.doesNotMatch(output, /private\/config.ts/);
       if (command === "plan") {
-        assert.match(output, /--- ~\/settings \(before\)/);
-        assert.match(output, /\+\+\+ ~\/settings \(after\)/);
-        assert.match(output, /-old\n\+new/);
+        assert.doesNotMatch(output, /---|\+\+\+/);
+        assert.match(output, /  -old\n  \+new/);
       } else assert.doesNotMatch(output, /@@|---|\+\+\+|old\n|new\n/);
     },
   );
@@ -100,10 +103,9 @@ describe("Planning and applying", () => {
       ]),
       "plan",
     );
-    assert.ok(output.includes(status));
-    assert.ok(output.includes(counts));
-    if (before === null && after) assert.match(output, /--- \/dev\/null/);
-    if (after === null && before) assert.match(output, /\+\+\+ \/dev\/null/);
+    assert.ok(output.includes(status === "CREATED" ? "+file:644" : "-file:644"));
+    if (counts !== "+0 -0") assert.ok(output.includes(counts));
+    else assert.match(output, /contents unchanged/);
     if (after && !after.endsWith("\n")) assert.match(output, /No newline at end of file/);
   });
 
@@ -111,8 +113,8 @@ describe("Planning and applying", () => {
     "binary/invalid UTF-8 output gets markers instead of line counts or text hunks: %j",
     (bytes) => {
       const output = render(plan([change({ before: null, after: bytes })]), "plan");
-      assert.match(output, /CREATED.*binary/);
-      assert.doesNotMatch(output, /@@|�|CREATED.*\+\d/);
+      assert.match(output, /\+file:644\n  binary/);
+      assert.doesNotMatch(output, /@@|�/);
     },
   );
 
@@ -142,7 +144,7 @@ describe("Planning and applying", () => {
           sources: preserved.sources,
         };
       const output = render(result, "plan");
-      assert.match(output, /KEPT.*no longer managed/);
+      assert.match(output, /kept: .*no longer managed/);
       assert.ok(output.includes(wholeOwned ? "modified" : "shared file"));
       assert.match(output, /0 files changed.*1 preserved/);
       assert.doesNotMatch(output, /@@/);
@@ -184,6 +186,45 @@ describe("Planning and applying", () => {
       await absent(f.home);
     },
   );
+
+  test("plan separates file blocks and keeps metadata before hunks", () => {
+    const output = render(
+      plan([
+        change({
+          path: "/home/test/link",
+          beforeType: "symlink",
+          beforeMode: 0o777,
+          diffBefore: Buffer.from("new\n"),
+          mode: 0o600,
+        }),
+        change({ mode: 0o600 }),
+      ]),
+      "plan",
+    );
+    assert.match(
+      output,
+      /^~\/link\n  -symlink \+file:600\n\n~\/settings\n  -file:644 \+file:600\n  @@/,
+    );
+    assert.doesNotMatch(output, /777|TYPE|MODE|\u001b/);
+  });
+
+  test("plan colors paths, metadata, hunks and context without changing plain output", () => {
+    const result = plan([
+      change({
+        before: Buffer.from("same\nold\n"),
+        after: Buffer.from("same\nnew\n"),
+        mode: 0o600,
+      }),
+    ]);
+    const output = render(result, "plan", { color: true });
+    assert.ok(output.includes("\u001b[1m~/settings\u001b[0m"));
+    assert.ok(output.includes("\u001b[31m-file:644\u001b[0m \u001b[32m+file:600\u001b[0m"));
+    assert.ok(output.includes("\u001b[34m@@"));
+    assert.ok(output.includes("\u001b[2m same\u001b[0m"));
+    assert.ok(output.includes("\u001b[31m-old\u001b[0m"));
+    assert.ok(output.includes("\u001b[32m+new\u001b[0m"));
+    assert.equal(output.replace(/\u001b\[\d+m/g, ""), render(result, "plan"));
+  });
 
   // Defensive display regression beyond the SPEC: keep path labels safe and unambiguous.
   test("outside-home path labels stay absolute and escape terminal control characters", () => {
