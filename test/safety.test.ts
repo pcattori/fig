@@ -81,6 +81,27 @@ describe("Safety", () => {
     await absent(join(f.home, "message"));
   });
 
+  test("captures all destination inputs before callbacks; apply still catches callback-side writes", async () => {
+    const f = await fixture();
+    const later = join(f.home, "z-later");
+    await f.file(later, "captured");
+    const result = await f.plan([
+      f.api().text("~/a-first", async () => {
+        // Deliberately impure user code: it must not change the planner's captured inputs.
+        await f.file(later, "callback side effect");
+        return "first";
+      }),
+      f.api().text("~/z-later", (current) => `${current}!`),
+    ]);
+    assert.equal(
+      result.changes.find((change) => change.path === later)!.after!.toString(),
+      "captured!",
+    );
+    await assert.rejects(apply(result), /changed since planning/);
+    await absent(join(f.home, "a-first"));
+    assert.equal(await readFile(later, "utf8"), "callback side effect");
+  });
+
   test("failed planning writes nothing and reports destination plus declaring module", async () => {
     const f = await fixture();
     const { text, json } = f.api();

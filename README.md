@@ -106,6 +106,12 @@ Fig rejects source symlinks, symlink destinations/ancestors, file/directory coll
 
 Apply is not a multi-file transaction. A crash/I/O failure can leave partial application, and applications can still race writes. There is no backup, rollback, legacy-symlink migration, repository fetching, tool installation, editor setup, or capture workflow in v1. A crash can leave a `.lock`; remove it only after confirming no apply is running.
 
+## Internals
+
+`engine.ts` is the imperative shell: it reads files, captures destination snapshots, runs user callbacks once, and performs locked/atomic writes. `reconcile.ts` contains the pure `reconcile(desired, current, previousLedger)` function, which decides writes, unchanged files, cleanup, and the next ledger using values alone.
+
+All destination inputs are captured before callbacks run. Callbacks remain an arbitrary-code boundary, not a claim of purity. Policy tests use ordinary maps and buffers; filesystem safety and CLI tests still use real temporary directories. No filesystem framework or dependency-injection layer is involved.
+
 ## Development
 
 Node LTS and exact pnpm versions are specified in `package.json`. Vite+ handles builds, tests, typechecking tasks, linting, and formatting:

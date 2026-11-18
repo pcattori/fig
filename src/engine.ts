@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import {
   lstat,
   mkdir,
@@ -12,35 +12,16 @@ import {
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { Plugin } from "./api.ts";
 import { homedir } from "node:os";
-interface OwnedFile {
-  hash: string;
-  mode: number;
-  cleanup: boolean;
-  sources: string[];
-}
-interface Ledger {
-  version: 1;
-  files: Record<string, OwnedFile>;
-}
-interface Snapshot {
-  contents: Buffer | null;
-  mode: number;
-}
+import { equalContents as equal, reconcile } from "./reconcile.ts";
+import type { Change, DesiredFile, Ledger, OwnedFile, Snapshot } from "./reconcile.ts";
+export type { Change } from "./reconcile.ts";
+
 type Operation = {
   name: string;
   run: (input: Buffer | null) => Promise<Buffer>;
   mode?: number;
   json?: boolean;
 };
-export interface Change {
-  path: string;
-  action: "write" | "delete" | "preserve";
-  before: Buffer | null;
-  after: Buffer | null;
-  mode: number;
-  beforeMode: number;
-  sources: string[];
-}
 export interface Plan {
   home: string;
   statePath: string;
@@ -50,9 +31,6 @@ export interface Plan {
   unchanged: number;
 }
 
-const hash = (data: Buffer) => createHash("sha256").update(data).digest("hex");
-const equal = (a: Buffer | null, b: Buffer | null) =>
-  a === null ? b === null : b !== null && a.equals(b);
 const inside = (root: string, path: string) => {
   const rel = relative(root, path);
   return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
@@ -142,6 +120,7 @@ function parseLedger(contents: Buffer | null): Ledger {
   return value;
 }
 
+/** I/O shell: capture inputs, run callbacks, then reconcile plain values. */
 export async function plan(options: { plugins: Plugin[] }): Promise<Plan> {
   const home = homedir();
   const statePath = join(home, ".local/state/fig/state.json");
@@ -214,12 +193,20 @@ export async function plan(options: { plugins: Plugin[] }): Promise<Plan> {
     }
   }
 
-  const changes: Change[] = [];
-  const ledger: Ledger = { version: 1, files: {} };
-  let unchanged = 0;
+  const current = new Map<string, Snapshot>();
+  for (const path of new Set([...paths, ...Object.keys(previous.files)])) {
+    if (
+      [statePath, `${statePath}.lock`].some((state) => inside(path, state) || inside(state, path))
+    ) {
+      throw new Error(`Ledger entry overlaps state: ${path}`);
+    }
+    current.set(path, await snapshot(path));
+  }
+
+  const desired = new Map<string, DesiredFile>();
   for (const path of paths) {
     const operations = pipelines.get(path)!;
-    const initial = await snapshot(path);
+    const initial = current.get(path)!;
     const run = async (input: Buffer | null) => {
       let output = input;
       let jsonStart: Buffer | null | undefined;
@@ -256,59 +243,15 @@ export async function plan(options: { plugins: Plugin[] }): Promise<Plan> {
       operations.findLast((operation) => operation.mode !== undefined)?.mode ?? initial.mode;
     // A files plugin declares whole-file ownership. Transforms alone do not:
     // their output can contain application-owned fields, even if freshly created.
-    ledger.files[path] = {
-      hash: hash(after),
+    desired.set(path, {
+      contents: after,
       mode,
       cleanup: operations.some((operation) => operation.mode !== undefined),
       sources,
-    };
-    if (equal(initial.contents, after) && mode === initial.mode) unchanged++;
-    else
-      changes.push({
-        path,
-        action: "write",
-        before: initial.contents,
-        after,
-        mode,
-        beforeMode: initial.mode,
-        sources,
-      });
+    });
   }
 
-  for (const [path, owned] of Object.entries(previous.files)) {
-    if (pipelines.has(path)) continue;
-    if (
-      [statePath, `${statePath}.lock`].some((state) => inside(path, state) || inside(state, path))
-    )
-      throw new Error(`Ledger entry overlaps state: ${path}`);
-    const current = await snapshot(path);
-    if (current.contents === null) continue;
-    if (owned.cleanup && hash(current.contents) === owned.hash && current.mode === owned.mode) {
-      changes.push({
-        path,
-        action: "delete",
-        before: current.contents,
-        after: null,
-        mode: current.mode,
-        beforeMode: current.mode,
-        sources: owned.sources,
-      });
-    } else {
-      changes.push({
-        path,
-        action: "preserve",
-        before: current.contents,
-        after: current.contents,
-        mode: current.mode,
-        beforeMode: current.mode,
-        sources: owned.sources,
-      });
-      // Retain modified whole-owned files for future cleanup attempts, but
-      // simply relinquish transform-only files when their pipeline disappears.
-      if (owned.cleanup) ledger.files[path] = owned;
-    }
-  }
-  return { home, statePath, stateBefore, ledger, changes, unchanged };
+  return { home, statePath, stateBefore, ...reconcile(desired, current, previous) };
 }
 
 async function atomicWrite(path: string, contents: Buffer, mode: number) {
