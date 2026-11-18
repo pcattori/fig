@@ -5,7 +5,7 @@ Dotfiles as ordered plugin arrays: live file → replacements/transforms → pro
 ## Try safely
 
 ```sh
-cd tools/fig
+cd ~/dev/fig
 pnpm install
 pnpm exec vp run build
 NODE="$(node -p 'process.execPath')"
