@@ -29,6 +29,8 @@ export interface Change {
   path: string;
   action: "write" | "delete" | "preserve";
   before: Buffer | null;
+  /** Display-only referent bytes when replacing a symlink; null if unavailable. */
+  diffBefore?: Buffer | null;
   after: Buffer | null;
   mode: number;
   beforeMode: number;

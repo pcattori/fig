@@ -286,7 +286,26 @@ export async function plan(options: { plugins: Plugin[] }): Promise<Plan> {
     });
   }
 
-  return { home, statePath, stateBefore, ...reconcile(desired, current, previous) };
+  const result = reconcile(desired, current, previous);
+  for (const change of result.changes) {
+    if (change.action !== "write" || change.beforeType !== "symlink" || change.type !== "file")
+      continue;
+    // Display only: retain the link target in `before` for ownership and preflight.
+    try {
+      change.diffBefore = (await followStat(change.path)).isFile()
+        ? await readFile(change.path)
+        : null;
+    } catch (error) {
+      if (
+        !["ENOENT", "ENOTDIR", "ELOOP", "EACCES", "EPERM"].includes(
+          (error as NodeJS.ErrnoException).code ?? "",
+        )
+      )
+        throw error;
+      change.diffBefore = null;
+    }
+  }
+  return { home, statePath, stateBefore, ...result };
 }
 
 async function atomicWrite(

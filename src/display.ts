@@ -21,25 +21,34 @@ const mode = (value: number) => value.toString(8).padStart(3, "0");
 const binary = (value: Buffer | null) => value !== null && (value.includes(0) || !isUtf8(value));
 
 function diff(change: Change, path: string) {
-  if (change.action === "preserve" || change.before?.equals(change.after ?? Buffer.alloc(0))) {
-    return { added: 0, removed: 0, description: "", patch: "" };
-  }
-  if (binary(change.before) || binary(change.after)) {
+  const before = change.diffBefore === undefined ? change.before : change.diffBefore;
+  if (change.diffBefore === null) {
     return {
       added: 0,
       removed: 0,
-      description: `binary (${change.before?.length ?? 0} → ${change.after?.length ?? 0} bytes)`,
+      description: "symlink contents unavailable (line counts unavailable)",
+      patch: "",
+    };
+  }
+  if (change.action === "preserve" || before?.equals(change.after ?? Buffer.alloc(0))) {
+    return { added: 0, removed: 0, description: "", patch: "" };
+  }
+  if (binary(before) || binary(change.after)) {
+    return {
+      added: 0,
+      removed: 0,
+      description: `binary (${before?.length ?? 0} → ${change.after?.length ?? 0} bytes)`,
       patch: "",
     };
   }
   const patch = structuredPatch(
-    change.before === null
+    before === null
       ? "/dev/null"
-      : `${path} (before${change.beforeType === "symlink" ? "; symlink target" : ""})`,
+      : `${path} (before${change.diffBefore !== undefined ? "; dereferenced symlink" : change.beforeType === "symlink" ? "; symlink target" : ""})`,
     change.after === null
       ? "/dev/null"
       : `${path} (after${change.type === "symlink" ? "; symlink target" : ""})`,
-    change.before?.toString("utf8") ?? "",
+    before?.toString("utf8") ?? "",
     change.after?.toString("utf8") ?? "",
     undefined,
     undefined,
