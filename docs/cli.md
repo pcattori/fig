@@ -15,4 +15,6 @@ Only config/help flags are supported. Relative CLI config paths resolve from the
 
 `plan` shows built-in unified diffs plus operation summaries, without writing destinations or the ledger. It uses jsdiff, not Git or a system `diff` executable. Diffs compare exact file contents, including JSON formatting. **Diffs may expose secrets.**
 
+Each planned file gets its own block, separated by a blank line. Paths appear first, followed by any metadata changes (for example, `-symlink +file:600` or `-file:644 +file:600`), then content hunks. Symlink modes are omitted; content diffs for symlink-to-file replacements compare the dereferenced contents. Red marks removals, green additions, blue hunk headers, and dim text context and summaries; paths are bold. Colors are enabled only on supported terminals and disabled by `NO_COLOR`. Unified diff file headers are omitted because the path already labels each block.
+
 `apply` recomputes the current plan, writes it, then shows compact per-file added/removed line counts and totals. Binary changes, permission changes, and preserved obsolete files get their own notices. No full diffs during apply and no pager, external viewer, diff flag, or verbosity mode in v1. Extremely expensive diffs have a computation limit and explicitly report unavailable line counts rather than blocking indefinitely.
