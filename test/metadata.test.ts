@@ -21,12 +21,55 @@ test("files dereferences source links and replaces destination links without tou
   const result = await f.plan(config);
   assert.match(render(result, "plan"), /type: symlink → file/);
   assert.match(render(result, "plan"), /mode: 777 → 640/);
+  assert.match(render(result, "plan"), /-untouched\n\+new/);
+  assert.match(render(result, "plan"), /before; dereferenced symlink/);
+  const change = result.changes.find((change) => change.path === join(f.home, "linked"))!;
+  assert.equal(change.before?.toString(), original);
+  assert.equal(change.diffBefore?.toString(), "untouched\n");
   assert.equal((await lstat(join(f.home, "linked"))).isSymbolicLink(), true);
   await apply(result);
   assert.equal((await lstat(join(f.home, "linked"))).isFile(), true);
   assert.equal(await readFile(join(f.home, "linked"), "utf8"), "new\n");
   assert.equal(await readFile(original, "utf8"), "untouched\n");
   assert.equal((await f.plan(config)).changes.length, 0);
+});
+
+test.each(["same\n", "old\n", "old\0bytes"])(
+  "symlink replacement diffs captured referent contents: %s",
+  async (contents) => {
+    const f = await fixture();
+    await f.file(join(f.root, "input/entry"), "same\n");
+    await f.file(join(f.home, "target"), contents);
+    await symlink("target", join(f.home, "entry"));
+    const result = await f.plan([f.api().files("../input")]);
+    const output = render(result, "plan");
+    if (contents === "same\n") {
+      assert.match(output, /1 files changed, \+0 -0/);
+      assert.doesNotMatch(output, /@@/);
+    } else if (contents.includes("\0")) {
+      assert.match(output, /binary \(9 → 5 bytes\)/);
+    } else {
+      assert.match(output, /-old\n\+same/);
+      assert.match(output, /1 files changed, \+1 -1/);
+    }
+    // Rendering is based on planning-time bytes, not subsequent filesystem reads.
+    await f.file(join(f.home, "target"), "later\n");
+    assert.equal(render(result, "plan"), output);
+    await apply(result);
+    assert.equal(await readFile(join(f.home, "target"), "utf8"), "later\n");
+  },
+);
+
+test("dangling destination links report unavailable contents, not an empty-file diff", async () => {
+  const f = await fixture();
+  await f.file(join(f.root, "input/entry"), "new\n");
+  await f.file(join(f.home, "placeholder"), "");
+  await symlink("missing", join(f.home, "entry"));
+  const result = await f.plan([f.api().files("../input")]);
+  assert.match(render(result, "plan"), /symlink contents unavailable/);
+  assert.doesNotMatch(render(result, "plan"), /@@/);
+  await apply(result);
+  assert.equal(await readFile(join(f.home, "entry"), "utf8"), "new\n");
 });
 
 test("metadata composes in pipeline order, supports mode-only edits and symlink creation", async () => {

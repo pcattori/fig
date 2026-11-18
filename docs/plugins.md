@@ -54,7 +54,9 @@ new contents from a text callback. Metadata flows through the pipeline in order;
 `files` dereferences source symlinks, including directory links. Dangling links
 and directory cycles fail planning. Destination leaf symlinks are captured
 without following them and atomically replaced if needed. Plan output shows
-type/mode changes; content diffs for a symlink show its target string.
+type/mode changes. When replacing a symlink with a regular file, content diffs
+compare its dereferenced contents with the new file (or report unavailable contents
+for dangling/unreadable links). Other symlink diffs show the target string.
 
 ## Pipeline behavior
 
