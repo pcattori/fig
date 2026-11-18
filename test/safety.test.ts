@@ -3,36 +3,19 @@ import assert from "node:assert/strict";
 import { chmod, lstat, open, readFile, readdir, symlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { apply } from "../src/engine.ts";
-import type { Plugin } from "../src/api.ts";
 import { absent, fixture } from "./helpers.ts";
 
 describe("Safety", () => {
-  test.each(["source root", "source entry", "destination", "destination ancestor"] as const)(
-    "rejects a symlink at the %s",
-    async (example) => {
-      const f = await fixture();
-      const original = join(f.root, "original/file");
-      await f.file(original, "do not touch");
-      let config: Plugin[];
-      if (example === "source root") {
-        await symlink(dirname(original), join(f.root, "linked"));
-        config = [f.api().files("../linked")];
-      } else if (example === "source entry") {
-        await f.file(join(f.root, "input/regular"), "regular");
-        await symlink(original, join(f.root, "input/linked"));
-        config = [f.api().files("../input")];
-      } else if (example === "destination") {
-        await symlink(original, join(f.root, "linked"));
-        config = [f.api().text("../linked", () => "overwrite")];
-      } else {
-        await symlink(dirname(original), join(f.root, "linked"));
-        config = [f.api().text("../linked/file", () => "overwrite")];
-      }
-      await assert.rejects(f.plan(config), /symlink|Unsupported files source/);
-      assert.equal(await readFile(original, "utf8"), "do not touch");
-      await absent(f.ledger);
-    },
-  );
+  test("rejects a symlink at a destination ancestor", async () => {
+    const f = await fixture();
+    const original = join(f.root, "original/file");
+    await f.file(original, "do not touch");
+    await symlink(dirname(original), join(f.root, "linked"));
+    const config = [f.api().text("../linked/file", () => "overwrite")];
+    await assert.rejects(f.plan(config), /symlink/);
+    assert.equal(await readFile(original, "utf8"), "do not touch");
+    await absent(f.ledger);
+  });
 
   test.each([
     ["file/directory collision", ["~/a", "~/a/b"], /File\/directory conflict/],

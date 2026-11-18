@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 
 export interface Snapshot {
+  type?: "file" | "symlink";
   contents: Buffer | null;
   mode: number;
 }
 export interface OwnedFile {
+  type?: "file" | "symlink";
   hash: string;
   mode: number;
   cleanup: boolean;
@@ -15,12 +17,15 @@ export interface Ledger {
   files: Record<string, OwnedFile>;
 }
 export interface DesiredFile {
+  type?: "file" | "symlink";
   contents: Buffer;
   mode: number;
   cleanup: boolean;
   sources: string[];
 }
 export interface Change {
+  type?: "file" | "symlink";
+  beforeType?: "file" | "symlink";
   path: string;
   action: "write" | "delete" | "preserve";
   before: Buffer | null;
@@ -53,16 +58,24 @@ export function reconcile(
     const before = snapshot(path);
     const after = desired.get(path)!;
     ledger.files[path] = {
+      ...(after.type ? { type: after.type } : {}),
       hash: hash(after.contents),
       mode: after.mode,
       cleanup: after.cleanup,
       sources: [...after.sources],
     };
-    if (equalContents(before.contents, after.contents) && before.mode === after.mode) unchanged++;
+    if (
+      equalContents(before.contents, after.contents) &&
+      before.mode === after.mode &&
+      (before.type ?? "file") === (after.type ?? "file")
+    )
+      unchanged++;
     else
       changes.push({
         path,
         action: "write",
+        type: after.type ?? "file",
+        beforeType: before.type ?? "file",
         before: before.contents,
         after: after.contents,
         mode: after.mode,
@@ -75,10 +88,17 @@ export function reconcile(
     if (desired.has(path)) continue;
     const before = snapshot(path);
     if (before.contents === null) continue;
-    if (owned.cleanup && hash(before.contents) === owned.hash && before.mode === owned.mode) {
+    if (
+      owned.cleanup &&
+      hash(before.contents) === owned.hash &&
+      before.mode === owned.mode &&
+      (before.type ?? "file") === (owned.type ?? "file")
+    ) {
       changes.push({
         path,
         action: "delete",
+        type: before.type ?? "file",
+        beforeType: before.type ?? "file",
         before: before.contents,
         after: null,
         mode: before.mode,
@@ -89,6 +109,8 @@ export function reconcile(
       changes.push({
         path,
         action: "preserve",
+        type: before.type ?? "file",
+        beforeType: before.type ?? "file",
         before: before.contents,
         after: before.contents,
         mode: before.mode,

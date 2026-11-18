@@ -42,6 +42,7 @@ describe("Ledger and cleanup", () => {
     const copied = join(f.root, "base/outside-home/copied");
     assert.equal(first.statePath, f.ledger);
     assert.deepEqual(first.ledger.files[copied], {
+      type: "file",
       hash: createHash("sha256").update("managed").digest("hex"),
       mode: 0o755,
       cleanup: true,

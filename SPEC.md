@@ -28,7 +28,7 @@
 
 - **Copy directory trees with `files`.**
 
-  `files(from, to = "~")` recursively copies/replaces files, including dotfiles and binary files, preserving relative paths and source permissions.
+  `files(from, to = "~")` recursively copies/replaces files, including dotfiles and binary files, preserving relative paths and source permissions. Dereference source symlinks, including directory links; reject dangling links and directory cycles.
 
 - **Resolve plugin paths consistently.**
 
@@ -36,7 +36,7 @@
 
 - **Support structured and text transforms.**
 
-  `json<T>(path, transform)` accepts mutation or a returned replacement. `text(path, transform)` requires returned UTF-8 text. Both support async callbacks.
+  `json<T>(path, transform)` accepts mutation or a returned replacement. `text(path, transform)` requires returned UTF-8 text. Both support async callbacks and receive mutable `{ type, mode }` metadata as a second argument. Type is `file` or `symlink`; mode is an integer from `0o000` to `0o777`. Symlinks require mode `0o777`; their contents represent the link target string. JSON input must be a regular file. Existing one-argument callbacks remain valid.
 
 ## Transform execution
 
@@ -46,7 +46,7 @@
 
 - **Replacements discard preceding output.**
 
-  `files` replaces preceding output. Subsequent transforms modify that replacement; subsequent replacements discard earlier work.
+  `files` replaces preceding output, resets type to regular file, and sets source referent permissions. Subsequent transforms modify that replacement; subsequent replacements discard earlier work.
 
 - **Preserve content outside user-directed changes.**
 
@@ -68,7 +68,7 @@
 
 - **Planning does not write managed files.**
 
-  Do not write destinations or the ledger. Report creation/deletion, permissions, binary changes, and preserved obsolete files alongside content diffs.
+  Do not write destinations or the ledger. Report creation/deletion, type changes, permissions, binary changes, and preserved obsolete files alongside content diffs.
 
 - **Show compact summaries when applying.**
 
@@ -90,11 +90,11 @@
 
 - **Record ownership and last-applied state.**
 
-  Track destinations, hashes, permissions, declaring modules, and whole-file ownership from `files` plugins.
+  Track destinations, hashes (symlink hashes cover target strings), types, permissions, declaring modules, and whole-file ownership from `files` plugins.
 
 - **Delete obsolete whole-file-owned files conservatively.**
 
-  Delete only when contents and permissions still match the ledger. Preserve modified files and retain their ownership history.
+  Delete only when contents, type, and permissions still match the ledger. Treat older ledger entries without type as regular files. Preserve modified files and retain their ownership history.
 
 - **Preserve obsolete transform-only files.**
 
@@ -108,7 +108,7 @@
 
 - **Reject unsafe filesystem relationships.**
 
-  Reject source symlinks, symlink destinations/ancestors, file/directory collisions, and ledger-path overlaps.
+  Reject symlink destination ancestors, file/directory collisions, and ledger-path overlaps. Capture destination leaf symlinks without following them and allow atomic replacement of the leaf. Never follow destination symlinks when writing. Ledger paths and ancestors must not be symlinks.
 
 - **Protect applies against concurrent changes.**
 
@@ -130,4 +130,4 @@
 
 - **Keep v1 focused on file reconciliation.**
 
-  Repository fetching, tool installation, editor setup, capture, external diff integration, symlink migration, backups, rollback, and multi-file transactions are outside v1.
+  Repository fetching, tool installation, editor setup, capture, external diff integration, backups, rollback, and multi-file transactions are outside v1.

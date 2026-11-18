@@ -22,6 +22,40 @@ For example, `files("./home")` copies to OS home, `files("./config", "./generate
 
 Import resolution is separate: `./helper.ts` is relative to the importing module, `~/...` imports resolve from OS home, and package imports use surrounding `node_modules`. Dependencies must be installed explicitly. Jiti transpiles but does not typecheck; its filesystem cache is disabled.
 
+## Type and mode metadata
+
+Text and JSON callbacks receive mutable metadata as a second argument. Existing
+one-argument callbacks still work. Destructure for reading; mutate the object to
+change metadata:
+
+```ts
+text("~/script", (contents, metadata) => {
+  metadata.mode = 0o755;
+  return contents;
+});
+text("~/shortcut", (_, metadata) => {
+  metadata.type = "symlink";
+  metadata.mode = 0o777;
+  return "../target";
+});
+text("~/script", (contents, { type, mode }) => {
+  return contents; // destructuring reads only; assignments here won't update metadata
+});
+```
+
+Types are `"file"` and `"symlink"`; directories cannot be transformed. Modes are
+integers from `0o000` to `0o777`. Symlinks require `0o777` (not chmod-able portably).
+For symlinks, text contents are the **link target string**, never the referent's
+bytes. JSON requires a regular-file input. To convert an existing symlink to a
+regular file, set `metadata.type = "file"`, set the desired mode, and return its
+new contents from a text callback. Metadata flows through the pipeline in order;
+`files` resets type to `"file"` and mode to the source referent's permissions.
+
+`files` dereferences source symlinks, including directory links. Dangling links
+and directory cycles fail planning. Destination leaf symlinks are captured
+without following them and atomically replaced if needed. Plan output shows
+type/mode changes; content diffs for a symlink show its target string.
+
 ## Pipeline behavior
 
 Start with live contents and run matching plugins in array order. A `files` replacement discards earlier output; later transforms edit that replacement. Compute all output before any destination write.

@@ -33,8 +33,12 @@ function diff(change: Change, path: string) {
     };
   }
   const patch = structuredPatch(
-    change.before === null ? "/dev/null" : `${path} (before)`,
-    change.after === null ? "/dev/null" : `${path} (after)`,
+    change.before === null
+      ? "/dev/null"
+      : `${path} (before${change.beforeType === "symlink" ? "; symlink target" : ""})`,
+    change.after === null
+      ? "/dev/null"
+      : `${path} (after${change.type === "symlink" ? "; symlink target" : ""})`,
     change.before?.toString("utf8") ?? "",
     change.after?.toString("utf8") ?? "",
     undefined,
@@ -86,6 +90,10 @@ export function render(result: Plan, command: "plan" | "apply"): string {
     changed++;
     const contentChanged =
       change.before === null || change.after === null || !change.before.equals(change.after);
+    const typeChanged =
+      change.action === "write" &&
+      change.before !== null &&
+      (change.beforeType ?? "file") !== (change.type ?? "file");
     const modeChanged =
       change.action === "write" && change.before !== null && change.beforeMode !== change.mode;
     if (modeChanged) permissions++;
@@ -94,16 +102,23 @@ export function render(result: Plan, command: "plan" | "apply"): string {
         ? "DELETED"
         : change.before === null
           ? "CREATED"
-          : !contentChanged
-            ? "MODE"
-            : "UPDATED";
+          : typeChanged
+            ? "TYPE"
+            : !contentChanged
+              ? "MODE"
+              : "UPDATED";
     const details = diff(change, path);
     added += details.added;
     removed += details.removed;
     if (details.description.includes("line counts unavailable")) unavailable++;
     const annotation = [
       details.description,
-      modeChanged ? `${mode(change.beforeMode)} → ${mode(change.mode)}` : "",
+      typeChanged
+        ? `type: ${change.beforeType ?? "file"} → ${change.type ?? "file"}`
+        : change.type === "symlink"
+          ? "type: symlink"
+          : "",
+      modeChanged ? `mode: ${mode(change.beforeMode)} → ${mode(change.mode)}` : "",
     ]
       .filter(Boolean)
       .join("; ");
