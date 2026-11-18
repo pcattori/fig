@@ -4,7 +4,7 @@
 
 ## Development
 
-Node LTS and exact pnpm versions are specified in `package.json`. Vite+ handles builds, tests, typechecking tasks, linting, and formatting:
+Node and exact pnpm versions are specified in `package.json`. Vite+ handles builds, tests, typechecking tasks, linting, and formatting:
 
 ```sh
 pnpm exec vp run test
@@ -12,6 +12,8 @@ pnpm exec vp run typecheck
 pnpm exec vp lint
 pnpm exec vp fmt
 ```
+
+GitHub Actions runs formatting checks (`pnpm exec vp fmt --check`), lint, typechecking, and tests on pull requests and pushes to `main`. Typechecking and test tasks build the package first.
 
 Test suites mirror the executable capability headings in [SPEC.md](../SPEC.md): configs/imports, plugin API/paths, transform execution, planning/applying, ledger/cleanup, and safety. Each test names a rule; `test.each` supplies examples. Shared fixtures isolate OS home and CLI execution. Detailed assertions live at the lowest useful layer, with focused CLI integration coverage. Unique regressions for older ledgers and safe path display are retained. No test deploys to your actual home.
 

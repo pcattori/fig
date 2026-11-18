@@ -47,7 +47,7 @@ export default [
     // I just want my theme!
     settings.theme = "rose-pine";
   }),
-]
+];
 ```
 
 All the other settings are preserved.
@@ -69,9 +69,7 @@ export default [
     settings.theme = "dark";
     settings.fontSize = 14;
   }),
-  text("~/.zshrc", (contents) =>
-    contents.replace("export EDITOR=nano", "export EDITOR=vim"),
-  ),
+  text("~/.zshrc", (contents) => contents.replace("export EDITOR=nano", "export EDITOR=vim")),
 ];
 ```
 
