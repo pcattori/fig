@@ -64,7 +64,7 @@
 
 - **Show built-in unified diffs when planning.**
 
-  Use jsdiff's `diff` package against exact contents, without requiring Git or system `diff`.
+  Use jsdiff's `diff` package against exact contents, without requiring Git or system `diff`. When replacing a destination symlink with a regular file, compare its planning-time dereferenced contents against the new contents. Report unavailable contents rather than an empty-file diff for dangling, unreadable, or non-file referents. Other symlink diffs compare link target strings. Dereferencing is display-only: ownership and preflight snapshots still capture the link target, and writes never follow destination symlinks.
 
 - **Planning does not write managed files.**
 
