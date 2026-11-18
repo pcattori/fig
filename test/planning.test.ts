@@ -31,15 +31,17 @@ function plan(changes: Change[]): Plan {
 
 describe("Planning and applying", () => {
   test.each(["plan", "apply"] as const)(
-    "%s has fixed output: line counts/totals, full diffs only for plan, and no routine provenance",
+    "%s has fixed output: full diffs for plan, quiet receipt for apply, and no routine provenance",
     (command) => {
       const output = render(plan([change()]), command);
       assert.match(
         output,
-        command === "plan" ? /^~\/settings\n  @@/ : /UPDATED\s+~\/settings\s+\+1 -1/,
+        command === "plan" ? /^~\/settings\n  @@/ : /^✓ Applied · 1 changed · 0 unchanged\n$/,
       );
-      assert.match(output, /1 files changed/);
-      assert.match(output, /\+1 -1/);
+      if (command === "plan") {
+        assert.match(output, /1 files changed/);
+        assert.match(output, /\+1 -1/);
+      }
       assert.doesNotMatch(output, /private\/config.ts/);
       if (command === "plan") {
         assert.doesNotMatch(output, /---|\+\+\+/);
@@ -83,7 +85,7 @@ describe("Planning and applying", () => {
     const applied = f.run(["apply", "-c", "config.ts"]);
     assert.equal(applied.status, 0, applied.stderr);
     assert.equal(await readFile(join(f.home, "message"), "utf8"), "second\nsuffix\n");
-    assert.match(applied.stdout, /UPDATED.*\+1 -0/);
+    assert.equal(applied.stdout, "✓ Applied · 1 changed · 0 unchanged\n");
     assert.doesNotMatch(applied.stdout, /@@|first|second|suffix/);
   });
 
@@ -119,15 +121,13 @@ describe("Planning and applying", () => {
   );
 
   test.each([false, true])(
-    "reports permission changes, with simultaneous content change: %s",
+    "apply counts permission changes without listing details, with simultaneous content change: %s",
     (contentChanged) => {
       const output = render(
         plan([change({ after: Buffer.from(contentChanged ? "new\n" : "old\n"), mode: 0o755 })]),
         "apply",
       );
-      assert.ok(output.startsWith(contentChanged ? "UPDATED" : "MODE"));
-      assert.match(output, /644 → 755/);
-      assert.match(output, /1 permission changes/);
+      assert.equal(output, "✓ Applied · 1 changed · 0 unchanged\n");
     },
   );
 
@@ -226,9 +226,42 @@ describe("Planning and applying", () => {
     assert.equal(output.replace(/\u001b\[\d+m/g, ""), render(result, "plan"));
   });
 
+  test("apply shows only counts and named preserved files, with optional color", () => {
+    const result = plan([
+      change(),
+      change({ path: "/home/test/created", before: null }),
+      change({ path: "/home/test/deleted", action: "delete", after: null }),
+      change({ path: "/home/test/mode", after: Buffer.from("old\n"), mode: 0o755 }),
+      change({ path: "/home/test/.zshrc", action: "preserve" }),
+      change({ path: "/home/test/shared", action: "preserve" }),
+    ]);
+    result.unchanged = 8;
+    result.ledger.files["/home/test/.zshrc"] = {
+      hash: "a".repeat(64),
+      mode: 0o644,
+      cleanup: true,
+      sources: [],
+    };
+    const plain = render(result, "apply");
+    assert.equal(
+      plain,
+      "✓ Applied · 4 changed · 8 unchanged\n" +
+        "! Kept ~/.zshrc — modified; no longer managed\n" +
+        "! Kept ~/shared — shared file; no longer managed\n",
+    );
+    const colored = render(result, "apply", { color: true });
+    assert.ok(colored.includes("\u001b[32m✓ Applied\u001b[0m"));
+    assert.ok(colored.includes("\u001b[33m! Kept ~/.zshrc\u001b[0m"));
+    assert.equal(colored.replace(/\u001b\[\d+m/g, ""), plain);
+    assert.equal(render(plan([]), "apply"), "✓ Applied · 0 changed · 0 unchanged\n");
+  });
+
   // Defensive display regression beyond the SPEC: keep path labels safe and unambiguous.
   test("outside-home path labels stay absolute and escape terminal control characters", () => {
-    const output = render(plan([change({ path: "/home/test-other/escape\n\u001b[31m" })]), "apply");
+    const output = render(
+      plan([change({ action: "preserve", path: "/home/test-other/escape\n\u001b[31m" })]),
+      "apply",
+    );
     assert.match(output, /"\/home\/test-other\/escape\\n\\u001b\[31m"/);
     assert.equal(output.includes("\u001b"), false);
   });

@@ -85,6 +85,19 @@ export function render(
 ): string {
   const paint = (code: number, text: string) =>
     options.color ? `\u001b[${code}m${text}\u001b[0m` : text;
+  if (command === "apply") {
+    const preserved = result.changes.filter((change) => change.action === "preserve");
+    const lines = [
+      `${paint(32, "✓ Applied")} ${paint(2, `· ${result.changes.length - preserved.length} changed · ${result.unchanged} unchanged`)}`,
+      ...preserved.map((change) => {
+        const reason = result.ledger.files[change.path]
+          ? "modified; no longer managed"
+          : "shared file; no longer managed";
+        return `${paint(33, `! Kept ${label(change.path, result.home)}`)} ${paint(2, `— ${reason}`)}`;
+      }),
+    ];
+    return `${lines.join("\n")}\n`;
+  }
   const lines: string[] = [];
   let contentFiles = 0;
   const entry = (type: string | undefined, permissions: number) =>
@@ -102,102 +115,64 @@ export function render(
       const reason = result.ledger.files[change.path]
         ? "modified; no longer managed"
         : "shared file; no longer managed";
-      lines.push(
-        command === "plan"
-          ? `${paint(1, path)}\n  ${paint(2, `kept: ${reason}`)}`
-          : `KEPT     ${path}  ${reason}`,
-      );
+      lines.push(`${paint(1, path)}\n  ${paint(2, `kept: ${reason}`)}`);
       continue;
     }
     changed++;
-    const contentChanged =
-      change.before === null || change.after === null || !change.before.equals(change.after);
     const typeChanged =
       change.action === "write" &&
       change.before !== null &&
       (change.beforeType ?? "file") !== (change.type ?? "file");
     const modeChanged =
       change.action === "write" && change.before !== null && change.beforeMode !== change.mode;
-    if (modeChanged && (command === "apply" || (!typeChanged && change.type !== "symlink")))
-      permissions++;
-    const status =
-      change.action === "delete"
-        ? "DELETED"
-        : change.before === null
-          ? "CREATED"
-          : typeChanged
-            ? "TYPE"
-            : !contentChanged
-              ? "MODE"
-              : "UPDATED";
+    if (modeChanged && !typeChanged && change.type !== "symlink") permissions++;
     const details = diff(change, path);
     added += details.added;
     removed += details.removed;
     if (details.description.includes("line counts unavailable")) unavailable++;
-    if (command === "plan") {
-      const block = [paint(1, path)];
-      const metadata: string[] = [];
-      if (change.action === "delete" || change.before === null || typeChanged || modeChanged) {
-        if (change.before !== null)
-          metadata.push(paint(31, `-${entry(change.beforeType, change.beforeMode)}`));
-        if (change.after !== null) metadata.push(paint(32, `+${entry(change.type, change.mode)}`));
-      }
-      if (metadata.length) block.push(`  ${metadata.join(" ")}`);
-      if (details.patch) {
-        // The path and metadata above replace unified diff file headers.
-        const patchLines = details.patch.trimEnd().split("\n");
-        const start = patchLines.findIndex((line) => line.startsWith("@@"));
-        for (const line of patchLines.slice(start)) {
-          const code = line.startsWith("@@")
-            ? 34
-            : line.startsWith("-")
-              ? 31
-              : line.startsWith("+")
-                ? 32
-                : 2;
-          block.push(`  ${paint(code, line)}`);
-        }
-      } else if (details.description && details.description !== "+0 -0") {
-        block.push(`  ${paint(2, details.description)}`);
-      }
-      if (details.added || details.removed || details.description.startsWith("binary"))
-        contentFiles++;
-      lines.push(block.join("\n"));
-      continue;
+    const block = [paint(1, path)];
+    const metadata: string[] = [];
+    if (change.action === "delete" || change.before === null || typeChanged || modeChanged) {
+      if (change.before !== null)
+        metadata.push(paint(31, `-${entry(change.beforeType, change.beforeMode)}`));
+      if (change.after !== null) metadata.push(paint(32, `+${entry(change.type, change.mode)}`));
     }
-    const annotation = [
-      details.description,
-      typeChanged
-        ? `type: ${change.beforeType ?? "file"} → ${change.type ?? "file"}`
-        : change.type === "symlink"
-          ? "type: symlink"
-          : "",
-      modeChanged ? `mode: ${mode(change.beforeMode)} → ${mode(change.mode)}` : "",
-    ]
-      .filter(Boolean)
-      .join("; ");
-    lines.push(`${status.padEnd(8)} ${path}${annotation ? `  ${annotation}` : ""}`);
+    if (metadata.length) block.push(`  ${metadata.join(" ")}`);
+    if (details.patch) {
+      // The path and metadata above replace unified diff file headers.
+      const patchLines = details.patch.trimEnd().split("\n");
+      const start = patchLines.findIndex((line) => line.startsWith("@@"));
+      for (const line of patchLines.slice(start)) {
+        const code = line.startsWith("@@")
+          ? 34
+          : line.startsWith("-")
+            ? 31
+            : line.startsWith("+")
+              ? 32
+              : 2;
+        block.push(`  ${paint(code, line)}`);
+      }
+    } else if (details.description && details.description !== "+0 -0") {
+      block.push(`  ${paint(2, details.description)}`);
+    }
+    if (details.added || details.removed || details.description.startsWith("binary"))
+      contentFiles++;
+    lines.push(block.join("\n"));
   }
-  if (command === "plan") {
-    const summary = [
-      `${changed} files changed`,
-      contentFiles
-        ? `${contentFiles} with content changes${added || removed ? ` (+${added} -${removed})` : ""}`
-        : unavailable
-          ? "content comparison unavailable"
-          : "contents unchanged",
-      permissions ? `${permissions} permission changes` : "",
-      preserved ? `${preserved} preserved` : "",
-      result.unchanged ? `${result.unchanged} unchanged` : "",
-      unavailable ? `line counts unavailable for ${unavailable} files` : "",
-    ]
-      .filter(Boolean)
-      .join(" · ");
-    lines.push(paint(2, summary));
-    return `${lines.join("\n\n")}\n`;
-  }
-  lines.push(
-    `${changed} files changed, +${added} -${removed}; ${permissions} permission changes; ${preserved} preserved; ${result.unchanged} unchanged${unavailable ? `; line counts unavailable for ${unavailable} files` : ""}`,
-  );
-  return `${lines.join("\n")}\n`;
+  const summary = [
+    `${changed} files changed`,
+    contentFiles
+      ? `${contentFiles} with content changes${added || removed ? ` (+${added} -${removed})` : ""}`
+      : unavailable
+        ? "content comparison unavailable"
+        : "contents unchanged",
+    permissions ? `${permissions} permission changes` : "",
+    preserved ? `${preserved} preserved` : "",
+    result.unchanged ? `${result.unchanged} unchanged` : "",
+    unavailable ? `line counts unavailable for ${unavailable} files` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  lines.push(paint(2, summary));
+  return `${lines.join("\n\n")}\n`;
 }
